@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct TrendVault_MobileApp: App {
+
+    @State private var store = LocalStore()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(store: store)
         }
     }
 }
