@@ -6,10 +6,18 @@
 //
 
 import SwiftUI
+import PhotosUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
 
     @Bindable var store: LocalStore
+
+    // Chunk 3 – Screenshot Import
+    @State private var selectedPickerItems: [PhotosPickerItem] = []
+    @State private var isImporting: Bool = false
+
+    private let defaultImportTag = "inbox"
 
     var body: some View {
         NavigationStack {
@@ -47,6 +55,68 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("TrendVault")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    PhotosPicker(
+                        selection: $selectedPickerItems,
+                        maxSelectionCount: 0,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        if isImporting {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "plus")
+                        }
+                    }
+                    .disabled(isImporting)
+                }
+            }
+            .onChange(of: selectedPickerItems) { _, newItems in
+                guard !newItems.isEmpty else { return }
+                importPickerItems(newItems)
+            }
+        }
+    }
+
+    // MARK: - Import
+
+    private func importPickerItems(_ items: [PhotosPickerItem]) {
+        isImporting = true
+
+        Task {
+            for item in items {
+                do {
+                    let data = try await item.loadTransferable(type: Data.self)
+
+                    guard let data else { continue }
+
+                    let preferredUTI = item.supportedContentTypes.first
+                    let ext = ImageService.shared.fileExtension(for: preferredUTI)
+
+                    guard let filename = ImageService.shared.saveImageData(data, preferredFileExtension: ext) else {
+                        continue
+                    }
+
+                    let newItem = TrendItem(
+                        imageFilename: filename,
+                        tags: [defaultImportTag],
+                        source: "photo_picker"
+                    )
+
+                    await MainActor.run {
+                        store.add(newItem)
+                    }
+                } catch {
+                    // ignore single failures and continue importing
+                    continue
+                }
+            }
+
+            await MainActor.run {
+                selectedPickerItems = []
+                isImporting = false
+            }
         }
     }
 }
