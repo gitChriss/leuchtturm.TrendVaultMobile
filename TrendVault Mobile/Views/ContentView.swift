@@ -25,81 +25,49 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                Section("Items") {
-                    if store.items.isEmpty {
-                        Text("No items yet.")
-                    } else {
-                        ForEach(store.items) { item in
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(item.tags.isEmpty ? "Untitled" : item.tags.joined(separator: ", "))
-                                    .font(.headline)
-                                Text(item.createdAt.formatted(date: .abbreviated, time: .shortened))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+            InboxView(store: store)
+                .navigationTitle("TrendVault")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        PhotosPicker(
+                            selection: $selectedPickerItems,
+                            maxSelectionCount: 0,
+                            matching: .images,
+                            photoLibrary: .shared()
+                        ) {
+                            if isImporting {
+                                ProgressView()
+                            } else {
+                                Image(systemName: "plus")
                             }
                         }
-                        .onDelete { indexSet in
-                            for idx in indexSet {
-                                store.delete(id: store.items[idx].id)
-                            }
-                        }
+                        .disabled(isImporting)
                     }
                 }
-
-                Section("Debug") {
-                    Button("Add sample item") {
-                        let sample = TrendItem(tags: ["ad", "hook"], source: "debug")
-                        store.add(sample)
-                    }
-
-                    Button("Reload from disk") {
-                        store.reload()
-                    }
+                .onChange(of: selectedPickerItems) { _, newItems in
+                    guard !newItems.isEmpty else { return }
+                    importPickerItems(newItems)
                 }
-            }
-            .navigationTitle("TrendVault")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    PhotosPicker(
-                        selection: $selectedPickerItems,
-                        maxSelectionCount: 0,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
-                        if isImporting {
-                            ProgressView()
-                        } else {
-                            Image(systemName: "plus")
-                        }
-                    }
-                    .disabled(isImporting)
+                .onAppear {
+                    store.reload()
                 }
-            }
-            .onChange(of: selectedPickerItems) { _, newItems in
-                guard !newItems.isEmpty else { return }
-                importPickerItems(newItems)
-            }
-            .onAppear {
-                store.reload()
-            }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                store.reload()
-            }
-            .sheet(item: $pendingCapture) { capture in
-                CaptureView(
-                    imageFilename: capture.imageFilename,
-                    initialTags: capture.initialTags,
-                    initialSource: capture.initialSource
-                ) { tags, source in
-                    let newItem = TrendItem(
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    store.reload()
+                }
+                .sheet(item: $pendingCapture) { capture in
+                    CaptureView(
                         imageFilename: capture.imageFilename,
-                        tags: tags,
-                        source: source
-                    )
-                    store.add(newItem)
+                        initialTags: capture.initialTags,
+                        initialSource: capture.initialSource
+                    ) { tags, source in
+                        let newItem = TrendItem(
+                            imageFilename: capture.imageFilename,
+                            tags: tags,
+                            source: source
+                        )
+                        store.add(newItem)
+                    }
                 }
-            }
         }
     }
 
