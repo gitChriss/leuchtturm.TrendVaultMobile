@@ -7,6 +7,7 @@
 
 import SwiftUI
 import PhotosUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -76,6 +77,13 @@ struct ContentView: View {
                 guard !newItems.isEmpty else { return }
                 importPickerItems(newItems)
             }
+            .onAppear {
+                store.reload()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                store.reload()
+            }
+
         }
     }
 

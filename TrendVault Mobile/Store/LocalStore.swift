@@ -63,8 +63,11 @@ final class JSONFileTrendItemStore: TrendItemStore {
     private let decoder: JSONDecoder
 
     init(filename: String = "trenditems.json") {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.fileURL = docs.appendingPathComponent(filename)
+
+        let base = SharedContainer.baseURL()
+            ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+
+        self.fileURL = base.appendingPathComponent(filename)
 
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]

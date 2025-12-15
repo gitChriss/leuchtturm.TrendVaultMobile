@@ -6,9 +6,48 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		A70517FD2EEF782300692E31 /* TrendVaultShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A70517F32EEF782300692E31 /* TrendVaultShare.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		A70517FB2EEF782300692E31 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A70517BA2EEF6C2300692E31 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A70517F22EEF782300692E31;
+			remoteInfo = TrendVaultShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		A70518022EEF782300692E31 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A70517FD2EEF782300692E31 /* TrendVaultShare.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		A70517C22EEF6C2300692E31 /* TrendVault Mobile.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "TrendVault Mobile.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		A70517F32EEF782300692E31 /* TrendVaultShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TrendVaultShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A70517FE2EEF782300692E31 /* Exceptions for "TrendVaultShare" folder in "TrendVaultShare" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = A70517F22EEF782300692E31 /* TrendVaultShare */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A70517C42EEF6C2300692E31 /* TrendVault Mobile */ = {
@@ -16,10 +55,25 @@
 			path = "TrendVault Mobile";
 			sourceTree = "<group>";
 		};
+		A70517F42EEF782300692E31 /* TrendVaultShare */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A70517FE2EEF782300692E31 /* Exceptions for "TrendVaultShare" folder in "TrendVaultShare" target */,
+			);
+			path = TrendVaultShare;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A70517BF2EEF6C2300692E31 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A70517F02EEF782300692E31 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +87,7 @@
 			isa = PBXGroup;
 			children = (
 				A70517C42EEF6C2300692E31 /* TrendVault Mobile */,
+				A70517F42EEF782300692E31 /* TrendVaultShare */,
 				A70517C32EEF6C2300692E31 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +96,7 @@
 			isa = PBXGroup;
 			children = (
 				A70517C22EEF6C2300692E31 /* TrendVault Mobile.app */,
+				A70517F32EEF782300692E31 /* TrendVaultShare.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -55,10 +111,12 @@
 				A70517BE2EEF6C2300692E31 /* Sources */,
 				A70517BF2EEF6C2300692E31 /* Frameworks */,
 				A70517C02EEF6C2300692E31 /* Resources */,
+				A70518022EEF782300692E31 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				A70517FC2EEF782300692E31 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A70517C42EEF6C2300692E31 /* TrendVault Mobile */,
@@ -69,6 +127,28 @@
 			productName = "TrendVault Mobile";
 			productReference = A70517C22EEF6C2300692E31 /* TrendVault Mobile.app */;
 			productType = "com.apple.product-type.application";
+		};
+		A70517F22EEF782300692E31 /* TrendVaultShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A70517FF2EEF782300692E31 /* Build configuration list for PBXNativeTarget "TrendVaultShare" */;
+			buildPhases = (
+				A70517EF2EEF782300692E31 /* Sources */,
+				A70517F02EEF782300692E31 /* Frameworks */,
+				A70517F12EEF782300692E31 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				A70517F42EEF782300692E31 /* TrendVaultShare */,
+			);
+			name = TrendVaultShare;
+			packageProductDependencies = (
+			);
+			productName = TrendVaultShare;
+			productReference = A70517F32EEF782300692E31 /* TrendVaultShare.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -81,6 +161,9 @@
 				LastUpgradeCheck = 2610;
 				TargetAttributes = {
 					A70517C12EEF6C2300692E31 = {
+						CreatedOnToolsVersion = 26.1.1;
+					};
+					A70517F22EEF782300692E31 = {
 						CreatedOnToolsVersion = 26.1.1;
 					};
 				};
@@ -100,12 +183,20 @@
 			projectRoot = "";
 			targets = (
 				A70517C12EEF6C2300692E31 /* TrendVault Mobile */,
+				A70517F22EEF782300692E31 /* TrendVaultShare */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		A70517C02EEF6C2300692E31 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A70517F12EEF782300692E31 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -122,7 +213,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A70517EF2EEF782300692E31 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A70517FC2EEF782300692E31 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A70517F22EEF782300692E31 /* TrendVaultShare */;
+			targetProxy = A70517FB2EEF782300692E31 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		A70517CB2EEF6C2500692E31 /* Debug */ = {
@@ -251,6 +357,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "TrendVault Mobile/TrendVault Mobile.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UKRSG7K348;
@@ -289,6 +396,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = "TrendVault Mobile/TrendVault Mobile.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = UKRSG7K348;
@@ -322,6 +430,64 @@
 			};
 			name = Release;
 		};
+		A70518002EEF782300692E31 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TrendVaultShare/TrendVaultShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = UKRSG7K348;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TrendVaultShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TrendVaultShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.leuchtturm.TrendVaultMobile.TrendVaultShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		A70518012EEF782300692E31 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = TrendVaultShare/TrendVaultShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = UKRSG7K348;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TrendVaultShare/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = TrendVaultShare;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.leuchtturm.TrendVaultMobile.TrendVaultShare;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -339,6 +505,15 @@
 			buildConfigurations = (
 				A70517CE2EEF6C2500692E31 /* Debug */,
 				A70517CF2EEF6C2500692E31 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A70517FF2EEF782300692E31 /* Build configuration list for PBXNativeTarget "TrendVaultShare" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A70518002EEF782300692E31 /* Debug */,
+				A70518012EEF782300692E31 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

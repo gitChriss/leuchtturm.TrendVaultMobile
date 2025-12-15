@@ -17,11 +17,13 @@ final class ImageService {
     func saveImageData(_ data: Data, preferredFileExtension: String = "jpg") -> String? {
         let filename = "trenditem-\(UUID().uuidString).\(preferredFileExtension)"
 
-        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+        SharedContainer.ensureImagesDirectoryExists()
+
+        guard let dir = SharedContainer.imagesDirectoryURL() else {
             return nil
         }
 
-        let url = docs.appendingPathComponent(filename)
+        let url = dir.appendingPathComponent(filename)
 
         do {
             try data.write(to: url, options: [.atomic])
