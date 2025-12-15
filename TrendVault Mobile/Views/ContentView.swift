@@ -14,35 +14,76 @@ struct ContentView: View {
 
     @Bindable var store: LocalStore
 
-    // Chunk 3 – Screenshot Import
+    // Import
     @State private var selectedPickerItems: [PhotosPickerItem] = []
     @State private var isImporting: Bool = false
 
-    // Chunk 5 – Capture Screen
+    // Capture
     @State private var pendingCapture: PendingCapture? = nil
+
+    // Filter UI
+    @State private var isFilterSheetPresented: Bool = false
 
     private let defaultImportTag = "inbox"
 
     var body: some View {
         NavigationStack {
-            Group {
-                if store.isLoading {
-                    VStack(spacing: 12) {
-                        ProgressView()
-                        Text("Loading…")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    InboxView(store: store)
-                        .navigationDestination(for: UUID.self) { id in
-                            DetailView(itemID: id)
+            VStack(spacing: 0) {
+
+                if store.hasActiveFilters {
+                    FilterChipsRow(
+                        query: store.query,
+                        onClearSearch: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                store.query.text = ""
+                            }
+                        },
+                        onClearSource: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                store.query.selectedSource = nil
+                            }
+                        },
+                        onClearDate: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                store.query.dateFilter = .all
+                            }
+                        },
+                        onClearAll: {
+                            withAnimation(.easeInOut(duration: 0.18)) {
+                                store.clearFilters()
+                            }
                         }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.top, 6)
+                    .padding(.bottom, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
+                Group {
+                    if store.isLoading {
+                        VStack(spacing: 12) {
+                            ProgressView()
+                            Text("Loading…")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        InboxView(store: store)
+                            .navigationDestination(for: UUID.self) { id in
+                                DetailView(itemID: id)
+                            }
+                    }
                 }
             }
-            .navigationTitle("TrendVault")
+            .animation(.easeInOut(duration: 0.18), value: store.hasActiveFilters)
+            .searchable(
+                text: $store.query.text,
+                placement: .navigationBarDrawer(displayMode: .always)
+            )
             .toolbar {
+
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
                         selection: $selectedPickerItems,
@@ -58,6 +99,19 @@ struct ContentView: View {
                     }
                     .disabled(isImporting)
                 }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isFilterSheetPresented = true
+                    } label: {
+                        Image(
+                            systemName: store.hasActiveFilters
+                                ? "line.3.horizontal.decrease.circle.fill"
+                                : "line.3.horizontal.decrease.circle"
+                        )
+                    }
+                    .accessibilityLabel("Filters")
+                }
             }
             .onChange(of: selectedPickerItems) { _, newItems in
                 guard !newItems.isEmpty else { return }
@@ -66,7 +120,11 @@ struct ContentView: View {
             .onAppear {
                 store.reloadAsync()
             }
-            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIApplication.willEnterForegroundNotification
+                )
+            ) { _ in
                 store.reloadAsync()
             }
             .sheet(item: $pendingCapture) { capture in
@@ -83,8 +141,46 @@ struct ContentView: View {
                     store.add(newItem)
                 }
             }
+            .sheet(isPresented: $isFilterSheetPresented) {
+                filterSheet
+            }
         }
         .environment(store)
+    }
+
+    // MARK: - Filter Sheet
+
+    private var filterSheet: some View {
+        NavigationStack {
+            Form {
+                Section("Date") {
+                    Picker("Range", selection: $store.query.dateFilter) {
+                        ForEach(TrendQuery.DateFilterPreset.allCases) { preset in
+                            Text(preset.rawValue).tag(preset)
+                        }
+                    }
+                    .pickerStyle(.inline)
+                }
+
+                Section("Source") {
+                    Picker("Source", selection: $store.query.selectedSource) {
+                        Text("All Sources").tag(Optional<String>.none)
+                        ForEach(store.availableSources, id: \.self) { source in
+                            Text(source).tag(Optional(source))
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Filters")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") {
+                        isFilterSheetPresented = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 
     // MARK: - Import
@@ -93,27 +189,42 @@ struct ContentView: View {
         isImporting = true
 
         Task {
-            for item in items {
+            let single = items.count == 1
+
+            for (index, item) in items.enumerated() {
                 do {
                     let data = try await item.loadTransferable(type: Data.self)
                     guard let data else { continue }
 
-                    let preferredUTI = item.supportedContentTypes.first
-                    let ext = ImageService.shared.fileExtension(for: preferredUTI)
+                    let ext = ImageService.shared.fileExtension(
+                        for: item.supportedContentTypes.first
+                    )
 
-                    guard let filename = ImageService.shared.saveImageData(data, preferredFileExtension: ext) else {
-                        continue
-                    }
+                    guard let filename =
+                        ImageService.shared.saveImageData(data, preferredFileExtension: ext)
+                    else { continue }
 
-                    await MainActor.run {
-                        pendingCapture = PendingCapture(
+                    if single {
+                        await MainActor.run {
+                            pendingCapture = PendingCapture(
+                                imageFilename: filename,
+                                initialTags: [defaultImportTag],
+                                initialSource: "photo_picker"
+                            )
+                        }
+                        break
+                    } else {
+                        let newItem = TrendItem(
                             imageFilename: filename,
-                            initialTags: [defaultImportTag],
-                            initialSource: "photo_picker"
+                            tags: [defaultImportTag],
+                            source: "photo_picker"
                         )
+                        await MainActor.run {
+                            store.add(newItem)
+                        }
                     }
 
-                    break
+                    if single && index == 0 { break }
 
                 } catch {
                     continue
@@ -128,7 +239,90 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Pending capture model
+// MARK: - Filter Chips Row
+
+private struct FilterChipsRow: View {
+
+    let query: TrendQuery
+
+    let onClearSearch: () -> Void
+    let onClearSource: () -> Void
+    let onClearDate: () -> Void
+    let onClearAll: () -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+
+                if !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    chip(
+                        text: "Search: \(truncate(query.text))",
+                        systemImage: "xmark.circle"
+                    ) {
+                        onClearSearch()
+                    }
+                }
+
+                if let source = query.selectedSource,
+                   !source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    chip(
+                        text: "Source: \(truncate(source))",
+                        systemImage: "xmark.circle"
+                    ) {
+                        onClearSource()
+                    }
+                }
+
+                if query.dateFilter != .all {
+                    chip(
+                        text: query.dateFilter.rawValue,
+                        systemImage: "xmark.circle"
+                    ) {
+                        onClearDate()
+                    }
+                }
+
+                chip(
+                    text: "Clear all",
+                    systemImage: "xmark.circle"
+                ) {
+                    onClearAll()
+                }
+            }
+            .font(.caption)
+            .padding(.vertical, 2)
+        }
+    }
+
+    private func truncate(_ text: String, max: Int = 20) -> String {
+        guard text.count > max else { return text }
+        let idx = text.index(text.startIndex, offsetBy: max)
+        return String(text[..<idx]) + "…"
+    }
+
+    private func chip(
+        text: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Text(text)
+                    .lineLimit(1)
+                Image(systemName: systemImage)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .background(.thinMaterial)
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Pending Capture
 
 private struct PendingCapture: Identifiable {
     let id = UUID()

@@ -8,9 +8,6 @@
 import UIKit
 import UniformTypeIdentifiers
 
-import UIKit
-import UniformTypeIdentifiers
-
 final class ShareViewController: UIViewController {
 
     private let appGroupID = "group.com.leuchtturm.TrendVaultMobile"
@@ -49,7 +46,7 @@ final class ShareViewController: UIViewController {
             label.centerXAnchor.constraint(equalTo: view.centerXAnchor)
         ])
     }
-    
+
     private func handleShare() {
         guard
             let item = extensionContext?.inputItems.first as? NSExtensionItem,
@@ -98,7 +95,7 @@ final class ShareViewController: UIViewController {
 
         finish()
     }
-    
+
     private func importImage(from url: URL) {
         do {
             let data = try Data(contentsOf: url)
@@ -144,7 +141,8 @@ final class ShareViewController: UIViewController {
             modifiedAt: Date(),
             imageFilename: filename,
             tags: [defaultTag],
-            source: "share_extension"
+            source: "share_extension",
+            extractedText: nil
         )
 
         let jsonURL = container.appendingPathComponent("trenditems.json")
@@ -192,4 +190,5 @@ private struct TrendItem: Codable {
     var imageFilename: String?
     var tags: [String]
     var source: String?
+    var extractedText: String?
 }

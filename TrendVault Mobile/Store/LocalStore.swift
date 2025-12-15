@@ -11,6 +11,61 @@ import Observation
 @Observable
 final class LocalStore {
 
+    // MARK: - Search & Filter (Chunk 8)
+
+    var query: TrendQuery = TrendQuery()
+
+    var hasActiveFilters: Bool {
+        query.hasActiveFilters
+    }
+
+    func clearFilters() {
+        query.clear()
+    }
+
+    var availableSources: [String] {
+        let sources = items
+            .compactMap { $0.source?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        return Array(Set(sources)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    var visibleItems: [TrendItem] {
+        let now = Date()
+        let cal = Calendar.current
+
+        let normalizedSelectedSource = query.normalize(query.selectedSource)
+        let tokens = query.tokenize()
+
+        return items.filter { item in
+            guard query.dateFilter.includes(item.createdAt, now: now, calendar: cal) else { return false }
+
+            if let normalizedSelectedSource, !normalizedSelectedSource.isEmpty {
+                let itemSource = query.normalize(item.source) ?? ""
+                guard itemSource == normalizedSelectedSource else { return false }
+            }
+
+            if tokens.isEmpty { return true }
+
+            let tagHaystack = item.tags.map { query.normalize($0) ?? "" }
+            let sourceHaystack = query.normalize(item.source) ?? ""
+
+            for token in tokens {
+                let matchesTag = tagHaystack.contains { $0.contains(token) }
+                let matchesSource = sourceHaystack.contains(token)
+
+                if !(matchesTag || matchesSource) {
+                    return false
+                }
+            }
+
+            return true
+        }
+    }
+
+    // MARK: - Existing Store
+
     private let backend: TrendItemStore
     private(set) var items: [TrendItem] = []
 
@@ -50,25 +105,50 @@ final class LocalStore {
         }
     }
 
+    // MARK: - Async write operations
+
     func add(_ item: TrendItem) {
-        do {
-            self.items = try backend.add(item)
-        } catch {
-            // keep current state if saving fails
+        Task.detached(priority: .userInitiated) { [backend] in
+            let updated: [TrendItem]
+            do {
+                updated = try backend.add(item)
+            } catch {
+                return
+            }
+
+            await MainActor.run {
+                self.items = updated
+            }
         }
     }
 
     func update(_ item: TrendItem) {
-        do {
-            self.items = try backend.update(item)
-        } catch {
+        Task.detached(priority: .userInitiated) { [backend] in
+            let updated: [TrendItem]
+            do {
+                updated = try backend.update(item)
+            } catch {
+                return
+            }
+
+            await MainActor.run {
+                self.items = updated
+            }
         }
     }
 
     func delete(id: UUID) {
-        do {
-            self.items = try backend.delete(id: id)
-        } catch {
+        Task.detached(priority: .userInitiated) { [backend] in
+            let updated: [TrendItem]
+            do {
+                updated = try backend.delete(id: id)
+            } catch {
+                return
+            }
+
+            await MainActor.run {
+                self.items = updated
+            }
         }
     }
 }

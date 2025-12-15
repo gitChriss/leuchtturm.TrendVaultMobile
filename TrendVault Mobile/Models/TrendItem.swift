@@ -19,13 +19,17 @@ struct TrendItem: Identifiable, Codable, Equatable, Hashable {
     var tags: [String]
     var source: String?
 
+    // Chunk 9: OCR (stored, not live)
+    var extractedText: String?
+
     init(
         id: UUID = UUID(),
         createdAt: Date = Date(),
         modifiedAt: Date = Date(),
         imageFilename: String? = nil,
         tags: [String] = [],
-        source: String? = nil
+        source: String? = nil,
+        extractedText: String? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -33,20 +37,36 @@ struct TrendItem: Identifiable, Codable, Equatable, Hashable {
         self.imageFilename = imageFilename
         self.tags = tags
         self.source = source
+        self.extractedText = extractedText
     }
 
     func updating(
         imageFilename: String? = nil,
         tags: [String]? = nil,
-        source: String? = nil
+        source: String? = nil,
+        extractedText: String? = nil
     ) -> TrendItem {
-        TrendItem(
+
+        let newImageFilename = imageFilename ?? self.imageFilename
+
+        let finalExtractedText: String?
+        if let extractedText {
+            finalExtractedText = extractedText
+        } else if let imageFilename, imageFilename != self.imageFilename {
+            // Image changed. OCR must be recalculated.
+            finalExtractedText = nil
+        } else {
+            finalExtractedText = self.extractedText
+        }
+
+        return TrendItem(
             id: id,
             createdAt: createdAt,
             modifiedAt: Date(),
-            imageFilename: imageFilename ?? self.imageFilename,
+            imageFilename: newImageFilename,
             tags: tags ?? self.tags,
-            source: source ?? self.source
+            source: source ?? self.source,
+            extractedText: finalExtractedText
         )
     }
 }

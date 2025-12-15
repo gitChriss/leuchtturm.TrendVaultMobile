@@ -8,32 +8,50 @@
 import SwiftUI
 import Observation
 import UIKit
+import ImageIO
 
 struct InboxView: View {
 
     @Bindable var store: LocalStore
 
-    private let columns: [GridItem] = [
-        GridItem(.adaptive(minimum: 160), spacing: 12)
-    ]
+    @State private var selectedID: UUID? = nil
+
+    private let gridSpacing: CGFloat = 12
+    private let gridHorizontalPadding: CGFloat = 16
 
     var body: some View {
         Group {
             if store.items.isEmpty {
                 emptyState
+            } else if store.visibleItems.isEmpty {
+                noResultsState
             } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        ForEach(store.items) { item in
-                            NavigationLink(value: item.id) {
-                                InboxTile(item: item)
+                GeometryReader { geo in
+                    let available = geo.size.width - (gridHorizontalPadding * 2)
+                    let colWidth = floor((available - gridSpacing) / 2)
+
+                    let columns: [GridItem] = [
+                        GridItem(.fixed(colWidth), spacing: gridSpacing),
+                        GridItem(.fixed(colWidth), spacing: gridSpacing)
+                    ]
+
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: gridSpacing) {
+                            ForEach(store.visibleItems) { item in
+                                InboxTile(item: item, width: colWidth)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture {
+                                        selectedID = item.id
+                                    }
                             }
-                            .buttonStyle(.plain)
                         }
+                        .padding(.horizontal, gridHorizontalPadding)
+                        .padding(.top, 12)
+                        .padding(.bottom, 24)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 24)
+                    .navigationDestination(item: $selectedID) { id in
+                        DetailView(itemID: id)
+                    }
                 }
             }
         }
@@ -47,37 +65,54 @@ struct InboxView: View {
         )
         .padding(.horizontal, 24)
     }
+
+    private var noResultsState: some View {
+        ContentUnavailableView(
+            "No results",
+            systemImage: "magnifyingglass",
+            description: Text("Try removing a filter.")
+        )
+        .padding(.horizontal, 24)
+    }
 }
 
 private struct InboxTile: View {
 
     let item: TrendItem
+    let width: CGFloat
+
+    private let radius: CGFloat = 14
+    private let thumbnailHeight: CGFloat = 160
 
     var body: some View {
+        let cardShape = RoundedRectangle(cornerRadius: radius, style: .continuous)
+
         VStack(alignment: .leading, spacing: 8) {
 
-            GeometryReader { proxy in
-                let side = proxy.size.width
-
-                ThumbnailView(filename: item.imageFilename)
-                    .frame(width: side, height: side)
-                    .clipped()
-            }
-            .aspectRatio(1, contentMode: .fit)
+            ThumbnailView(filename: item.imageFilename, targetPixelSize: 520)
+                .frame(width: width, height: thumbnailHeight)
+                .clipped()
+                .clipShape(TopRoundedRectangle(cornerRadius: radius))
 
             Text(titleText)
                 .font(.subheadline)
                 .fontWeight(.semibold)
                 .lineLimit(1)
+                .padding(.horizontal, 10)
 
             Text(item.createdAt.formatted(date: .abbreviated, time: .shortened))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
         }
-        .padding(10)
-        .background(.thinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .frame(width: width, alignment: .leading)
+        .background(.thinMaterial, in: cardShape)
+        .overlay(
+            cardShape.strokeBorder(.secondary.opacity(0.18), lineWidth: 1)
+        )
+        .compositingGroup()
     }
 
     private var titleText: String {
@@ -92,8 +127,11 @@ private struct InboxTile: View {
 private struct ThumbnailView: View {
 
     let filename: String?
+    let targetPixelSize: Int
 
     @State private var image: UIImage? = nil
+
+    private static let cache = NSCache<NSString, UIImage>()
 
     var body: some View {
         ZStack {
@@ -102,7 +140,7 @@ private struct ThumbnailView: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                Rectangle()
                     .fill(Color.secondary.opacity(0.12))
 
                 Image(systemName: "photo")
@@ -110,7 +148,6 @@ private struct ThumbnailView: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .task(id: filename) {
             await loadAsync()
         }
@@ -121,6 +158,13 @@ private struct ThumbnailView: View {
             await MainActor.run { image = nil }
             return
         }
+
+        let key = NSString(string: "\(filename)#\(targetPixelSize)")
+        if let cached = Self.cache.object(forKey: key) {
+            await MainActor.run { image = cached }
+            return
+        }
+
         guard let dir = SharedContainer.imagesDirectoryURL() else {
             await MainActor.run { image = nil }
             return
@@ -129,20 +173,51 @@ private struct ThumbnailView: View {
         let url = dir.appendingPathComponent(filename)
 
         let loaded: UIImage? = await Task.detached(priority: .utility) {
-            UIImage(contentsOfFile: url.path)
+            downsampleImage(at: url, maxPixelSize: targetPixelSize)
         }.value
 
         await MainActor.run {
+            if let loaded {
+                Self.cache.setObject(loaded, forKey: key)
+            }
             image = loaded
         }
     }
+
+    private func downsampleImage(at url: URL, maxPixelSize: Int) -> UIImage? {
+        let options: CFDictionary = [
+            kCGImageSourceShouldCache: false
+        ] as CFDictionary
+
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, options) else {
+            return nil
+        }
+
+        let downsampleOptions: CFDictionary = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ] as CFDictionary
+
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, downsampleOptions) else {
+            return nil
+        }
+
+        return UIImage(cgImage: cgImage, scale: 1.0, orientation: .up)
+    }
 }
 
-#Preview {
-    NavigationStack {
-        InboxView(store: LocalStore())
-            .navigationDestination(for: UUID.self) { id in
-                DetailView(itemID: id)
-            }
+private struct TopRoundedRectangle: Shape {
+
+    var cornerRadius: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let path = UIBezierPath(
+            roundedRect: rect,
+            byRoundingCorners: [.topLeft, .topRight],
+            cornerRadii: CGSize(width: cornerRadius, height: cornerRadius)
+        )
+        return Path(path.cgPath)
     }
 }

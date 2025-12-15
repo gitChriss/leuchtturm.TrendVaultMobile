@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct DetailView: View {
 
@@ -17,8 +18,15 @@ struct DetailView: View {
     @State private var sourceText: String = ""
     @State private var showingDeleteConfirm = false
 
+    @State private var image: UIImage? = nil
+    @State private var lastLoadedFilename: String? = nil
+
     private var item: TrendItem? {
         store.items.first { $0.id == itemID }
+    }
+
+    private var imageFilename: String? {
+        item?.imageFilename
     }
 
     private var imageFileURL: URL? {
@@ -49,6 +57,9 @@ struct DetailView: View {
                     tagsText = item.tags.joined(separator: ", ")
                     sourceText = item.source ?? ""
                 }
+                .task(id: imageFilename) {
+                    await loadImageIfNeeded()
+                }
             } else {
                 ContentUnavailableView("Nicht gefunden", systemImage: "questionmark.folder")
                     .navigationTitle("Detail")
@@ -62,9 +73,8 @@ struct DetailView: View {
     @ViewBuilder
     private func imageSection(item: TrendItem) -> some View {
         Group {
-            if let url = imageFileURL,
-               let uiImage = UIImage(contentsOfFile: url.path) {
-                Image(uiImage: uiImage)
+            if let image {
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity)
@@ -97,9 +107,6 @@ struct DetailView: View {
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.done)
                     .onSubmit { saveTags(for: item) }
-                    .onChange(of: tagsText) { _, _ in
-                        // Optional: live update, aber wir speichern bewusst nicht bei jedem Key-Stroke.
-                    }
 
                 Text("Kommagetrennt")
                     .font(.caption)
@@ -153,9 +160,7 @@ struct DetailView: View {
                     }
                     .buttonStyle(.bordered)
                 } else {
-                    Button {
-                        // no-op
-                    } label: {
+                    Button { } label: {
                         Label("Share", systemImage: "square.and.arrow.up")
                     }
                     .buttonStyle(.bordered)
@@ -186,6 +191,42 @@ struct DetailView: View {
         .padding(.top, 4)
     }
 
+    // MARK: - Image loading
+
+    private func loadImageIfNeeded() async {
+        guard let filename = imageFilename else {
+            await MainActor.run {
+                image = nil
+                lastLoadedFilename = nil
+            }
+            return
+        }
+
+        // Do not reload if already loaded for this file.
+        if lastLoadedFilename == filename, image != nil {
+            return
+        }
+
+        guard let dir = SharedContainer.imagesDirectoryURL() else {
+            await MainActor.run {
+                image = nil
+                lastLoadedFilename = filename
+            }
+            return
+        }
+
+        let url = dir.appendingPathComponent(filename)
+
+        let loaded: UIImage? = await Task.detached(priority: .utility) {
+            UIImage(contentsOfFile: url.path)
+        }.value
+
+        await MainActor.run {
+            image = loaded
+            lastLoadedFilename = filename
+        }
+    }
+
     // MARK: - Actions
 
     private func saveTags(for item: TrendItem) {
@@ -204,7 +245,6 @@ struct DetailView: View {
     }
 
     private func delete(_ item: TrendItem) {
-        // Delete image file if present
         if let url = imageFileURL {
             try? FileManager.default.removeItem(at: url)
         }
