@@ -18,6 +18,9 @@ struct ContentView: View {
     @State private var selectedPickerItems: [PhotosPickerItem] = []
     @State private var isImporting: Bool = false
 
+    // Chunk 5 – Capture Screen
+    @State private var pendingCapture: PendingCapture? = nil
+
     private let defaultImportTag = "inbox"
 
     var body: some View {
@@ -83,7 +86,20 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                 store.reload()
             }
-
+            .sheet(item: $pendingCapture) { capture in
+                CaptureView(
+                    imageFilename: capture.imageFilename,
+                    initialTags: capture.initialTags,
+                    initialSource: capture.initialSource
+                ) { tags, source in
+                    let newItem = TrendItem(
+                        imageFilename: capture.imageFilename,
+                        tags: tags,
+                        source: source
+                    )
+                    store.add(newItem)
+                }
+            }
         }
     }
 
@@ -96,7 +112,6 @@ struct ContentView: View {
             for item in items {
                 do {
                     let data = try await item.loadTransferable(type: Data.self)
-
                     guard let data else { continue }
 
                     let preferredUTI = item.supportedContentTypes.first
@@ -106,17 +121,20 @@ struct ContentView: View {
                         continue
                     }
 
-                    let newItem = TrendItem(
-                        imageFilename: filename,
-                        tags: [defaultImportTag],
-                        source: "photo_picker"
-                    )
-
                     await MainActor.run {
-                        store.add(newItem)
+                        // Open Capture Screen for tagging before saving the TrendItem.
+                        pendingCapture = PendingCapture(
+                            imageFilename: filename,
+                            initialTags: [defaultImportTag],
+                            initialSource: "photo_picker"
+                        )
                     }
+
+                    // If multiple images were selected, we only open one capture at a time.
+                    // Stop here so the user can save, then they can import the next batch.
+                    break
+
                 } catch {
-                    // ignore single failures and continue importing
                     continue
                 }
             }
@@ -127,6 +145,15 @@ struct ContentView: View {
             }
         }
     }
+}
+
+// MARK: - Pending capture model
+
+private struct PendingCapture: Identifiable {
+    let id = UUID()
+    let imageFilename: String
+    let initialTags: [String]
+    let initialSource: String?
 }
 
 #Preview {
