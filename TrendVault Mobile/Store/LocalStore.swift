@@ -14,13 +14,12 @@ final class LocalStore {
     private let backend: TrendItemStore
     private(set) var items: [TrendItem] = []
 
+    var isLoading: Bool = false
+
     init(backend: TrendItemStore = JSONFileTrendItemStore()) {
         self.backend = backend
-        do {
-            self.items = try backend.load()
-        } catch {
-            self.items = []
-        }
+        self.items = []
+        self.isLoading = false
     }
 
     func reload() {
@@ -28,6 +27,26 @@ final class LocalStore {
             self.items = try backend.load()
         } catch {
             self.items = []
+        }
+    }
+
+    func reloadAsync() {
+        Task { @MainActor in
+            isLoading = true
+        }
+
+        Task.detached(priority: .userInitiated) { [backend] in
+            let loaded: [TrendItem]
+            do {
+                loaded = try backend.load()
+            } catch {
+                loaded = []
+            }
+
+            await MainActor.run {
+                self.items = loaded
+                self.isLoading = false
+            }
         }
     }
 

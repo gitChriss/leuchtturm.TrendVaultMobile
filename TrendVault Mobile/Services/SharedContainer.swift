@@ -9,8 +9,6 @@ import Foundation
 
 enum SharedContainer {
 
-    // TODO (Chunk 4): Replace with your real App Group ID once created in Xcode.
-    // Example: "group.com.leuchtturm.TrendVaultMobile"
     static let appGroupID: String = "group.com.leuchtturm.TrendVaultMobile"
 
     static func containerURL() -> URL? {
@@ -21,8 +19,16 @@ enum SharedContainer {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
     }
 
+    // Cache to avoid repeated containerURL lookups
+    private static let cachedBaseURL: URL? = {
+        if let groupURL = containerURL() {
+            return groupURL
+        }
+        return fallbackDocumentsURL()
+    }()
+
     static func baseURL() -> URL? {
-        containerURL() ?? fallbackDocumentsURL()
+        cachedBaseURL
     }
 
     static func imagesDirectoryURL() -> URL? {

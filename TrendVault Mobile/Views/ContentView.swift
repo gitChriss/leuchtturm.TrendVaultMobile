@@ -25,50 +25,66 @@ struct ContentView: View {
 
     var body: some View {
         NavigationStack {
-            InboxView(store: store)
-                .navigationTitle("TrendVault")
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        PhotosPicker(
-                            selection: $selectedPickerItems,
-                            maxSelectionCount: 0,
-                            matching: .images,
-                            photoLibrary: .shared()
-                        ) {
-                            if isImporting {
-                                ProgressView()
-                            } else {
-                                Image(systemName: "plus")
-                            }
+            Group {
+                if store.isLoading {
+                    VStack(spacing: 12) {
+                        ProgressView()
+                        Text("Loading…")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    InboxView(store: store)
+                        .navigationDestination(for: UUID.self) { id in
+                            DetailView(itemID: id)
                         }
-                        .disabled(isImporting)
+                }
+            }
+            .navigationTitle("TrendVault")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    PhotosPicker(
+                        selection: $selectedPickerItems,
+                        maxSelectionCount: 0,
+                        matching: .images,
+                        photoLibrary: .shared()
+                    ) {
+                        if isImporting {
+                            ProgressView()
+                        } else {
+                            Image(systemName: "plus")
+                        }
                     }
+                    .disabled(isImporting)
                 }
-                .onChange(of: selectedPickerItems) { _, newItems in
-                    guard !newItems.isEmpty else { return }
-                    importPickerItems(newItems)
-                }
-                .onAppear {
-                    store.reload()
-                }
-                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
-                    store.reload()
-                }
-                .sheet(item: $pendingCapture) { capture in
-                    CaptureView(
+            }
+            .onChange(of: selectedPickerItems) { _, newItems in
+                guard !newItems.isEmpty else { return }
+                importPickerItems(newItems)
+            }
+            .onAppear {
+                store.reloadAsync()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                store.reloadAsync()
+            }
+            .sheet(item: $pendingCapture) { capture in
+                CaptureView(
+                    imageFilename: capture.imageFilename,
+                    initialTags: capture.initialTags,
+                    initialSource: capture.initialSource
+                ) { tags, source in
+                    let newItem = TrendItem(
                         imageFilename: capture.imageFilename,
-                        initialTags: capture.initialTags,
-                        initialSource: capture.initialSource
-                    ) { tags, source in
-                        let newItem = TrendItem(
-                            imageFilename: capture.imageFilename,
-                            tags: tags,
-                            source: source
-                        )
-                        store.add(newItem)
-                    }
+                        tags: tags,
+                        source: source
+                    )
+                    store.add(newItem)
                 }
+            }
         }
+        .environment(store)
     }
 
     // MARK: - Import
@@ -90,7 +106,6 @@ struct ContentView: View {
                     }
 
                     await MainActor.run {
-                        // Open Capture Screen for tagging before saving the TrendItem.
                         pendingCapture = PendingCapture(
                             imageFilename: filename,
                             initialTags: [defaultImportTag],
@@ -98,8 +113,6 @@ struct ContentView: View {
                         )
                     }
 
-                    // If multiple images were selected, we only open one capture at a time.
-                    // Stop here so the user can save, then they can import the next batch.
                     break
 
                 } catch {

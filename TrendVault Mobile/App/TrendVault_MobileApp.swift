@@ -15,6 +15,7 @@ struct TrendVault_MobileApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView(store: store)
+                .environment(store)
         }
     }
 }

@@ -25,7 +25,10 @@ struct InboxView: View {
                 ScrollView {
                     LazyVGrid(columns: columns, spacing: 12) {
                         ForEach(store.items) { item in
-                            InboxTile(item: item)
+                            NavigationLink(value: item.id) {
+                                InboxTile(item: item)
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -90,10 +93,12 @@ private struct ThumbnailView: View {
 
     let filename: String?
 
+    @State private var image: UIImage? = nil
+
     var body: some View {
         ZStack {
-            if let uiImage = loadImage() {
-                Image(uiImage: uiImage)
+            if let image {
+                Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
             } else {
@@ -106,16 +111,38 @@ private struct ThumbnailView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .task(id: filename) {
+            await loadAsync()
+        }
     }
 
-    private func loadImage() -> UIImage? {
-        guard let filename else { return nil }
-        guard let dir = SharedContainer.imagesDirectoryURL() else { return nil }
+    private func loadAsync() async {
+        guard let filename else {
+            await MainActor.run { image = nil }
+            return
+        }
+        guard let dir = SharedContainer.imagesDirectoryURL() else {
+            await MainActor.run { image = nil }
+            return
+        }
+
         let url = dir.appendingPathComponent(filename)
-        return UIImage(contentsOfFile: url.path)
+
+        let loaded: UIImage? = await Task.detached(priority: .utility) {
+            UIImage(contentsOfFile: url.path)
+        }.value
+
+        await MainActor.run {
+            image = loaded
+        }
     }
 }
 
 #Preview {
-    InboxView(store: LocalStore())
+    NavigationStack {
+        InboxView(store: LocalStore())
+            .navigationDestination(for: UUID.self) { id in
+                DetailView(itemID: id)
+            }
+    }
 }
