@@ -58,8 +58,8 @@ final class OCRService {
     /// - Notes:
     ///   - Returns suggestions only, never auto-applies.
     ///   - Excludes existingTags.
-    ///   - Only returns tags that exist in allowedTags (whitelist for OCR suggestions).
-    ///   - Applies small recency bonuses to prefer recently used tags.
+    ///   - Only returns tags that exist in allowedTags (whitelist).
+    ///   - Uses recencyBonuses to rank tags the user used recently higher.
     func suggestTags(
         from extractedText: String?,
         existingTags: [String],
@@ -85,17 +85,23 @@ final class OCRService {
         let tokens = raw
             .lowercased()
             .split { ch in
-                ch.isWhitespace || ch == "," || ch == ";" || ch == "." || ch == ":" || ch == "|" || ch == "/" || ch == "\\" || ch == "(" || ch == ")" || ch == "[" || ch == "]" || ch == "{" || ch == "}" || ch == "!" || ch == "?" || ch == "\"" || ch == "'" || ch == "„" || ch == "“" || ch == "’" || ch == "—" || ch == "-" || ch == "_" || ch == "+" || ch == "=" || ch == "*" || ch == "&" || ch == "%" || ch == "$" || ch == "#" || ch == "@" || ch == "<" || ch == ">" || ch == "~"
+                ch.isWhitespace
+                || ch == "," || ch == ";" || ch == "." || ch == ":" || ch == "|" || ch == "/" || ch == "\\"
+                || ch == "(" || ch == ")" || ch == "[" || ch == "]" || ch == "{" || ch == "}"
+                || ch == "!" || ch == "?" || ch == "\"" || ch == "'" || ch == "„" || ch == "“" || ch == "’"
+                || ch == "—" || ch == "-" || ch == "_" || ch == "+" || ch == "=" || ch == "*" || ch == "&"
+                || ch == "%" || ch == "$" || ch == "#" || ch == "@" || ch == "<" || ch == ">" || ch == "~"
             }
             .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 
-        var counts: [String: Int] = [:]
+        var tokenCounts: [String: Int] = [:]
 
         for token in tokens {
             let cleaned = token.trimmingCharacters(in: .whitespacesAndNewlines)
             if cleaned.count < 2 { continue }
             if cleaned.allSatisfy({ $0.isNumber }) { continue }
+
             if cleaned.contains("http") || cleaned.contains("www") { continue }
 
             let normalized = normalizeTag(cleaned)
@@ -104,28 +110,26 @@ final class OCRService {
             if normalizedExisting.contains(normalized) { continue }
             if !allowedSet.contains(normalized) { continue }
 
-            counts[normalized, default: 0] += 1
+            tokenCounts[normalized, default: 0] += 1
         }
 
-        // Apply recency bonuses (small nudge).
-        if !recencyBonuses.isEmpty {
-            for (tag, bonus) in recencyBonuses {
-                let normalized = normalizeTag(tag)
-                guard !normalized.isEmpty else { continue }
-                guard allowedSet.contains(normalized) else { continue }
-                guard !normalizedExisting.contains(normalized) else { continue }
-                guard bonus > 0 else { continue }
+        // Score = OCR-Treffer + Recency-Bonus
+        var scored: [(tag: String, score: Int, hits: Int)] = []
+        scored.reserveCapacity(tokenCounts.count)
 
-                counts[normalized, default: 0] += bonus
-            }
+        for (tag, hits) in tokenCounts {
+            let bonus = recencyBonuses[tag, default: 0]
+            let score = hits + bonus
+            scored.append((tag: tag, score: score, hits: hits))
         }
 
-        let ranked = counts
+        let ranked = scored
             .sorted { a, b in
-                if a.value != b.value { return a.value > b.value }
-                return a.key.count < b.key.count
+                if a.score != b.score { return a.score > b.score }
+                if a.hits != b.hits { return a.hits > b.hits }
+                return a.tag.count < b.tag.count
             }
-            .map { $0.key }
+            .map { $0.tag }
 
         var result: [String] = []
         for candidate in ranked {

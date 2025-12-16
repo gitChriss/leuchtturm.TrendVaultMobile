@@ -163,68 +163,49 @@ final class LocalStore {
         }
     }
 
-    // MARK: - Tag Recency (Chunk 9.1 polish)
+    // MARK: - Recency Bonuses (Chunk 9.2)
 
-    private let tagLastUsedKey: String = "tagLastUsed"
-
-    /// Returns normalized tag -> last used timestamp (unix time).
-    private var tagLastUsed: [String: TimeInterval] {
-        get {
-            guard let data = settings.data(forKey: tagLastUsedKey) else { return [:] }
-            guard let dict = try? JSONDecoder().decode([String: TimeInterval].self, from: data) else { return [:] }
-            return dict
-        }
-        set {
-            if let data = try? JSONEncoder().encode(newValue) {
-                settings.set(data, forKey: tagLastUsedKey)
-            }
-        }
+    /// Bonus-Map für Tag-Vorschläge. Höhere Werte = höheres Ranking.
+    /// Heuristik:
+    /// - Wir schauen auf die zuletzt geänderten Items (modifiedAt).
+    /// - Tags aus sehr neuen Items bekommen mehr Punkte.
+    /// - Ergebnis ist klein und stabil, kein Persist nötig.
+    var recencyBonuses: [String: Int] {
+        buildRecencyBonuses()
     }
 
-    /// Call this whenever tags are saved / applied.
-    func markTagsUsed(_ tags: [String]) {
-        let now = Date().timeIntervalSince1970
-        var current = tagLastUsed
+    private func buildRecencyBonuses() -> [String: Int] {
 
-        for raw in tags {
-            let t = Self.normalizeTag(raw)
-            if t.isEmpty { continue }
-            current[t] = now
-        }
+        // Tuning
+        let maxItemsToConsider = 30
+        let maxBonusPerOccurrence = 6
+        let minBonusPerOccurrence = 1
+        let bucketSize = 5  // alle 5 Items sinkt der Bonus
 
-        tagLastUsed = current
-    }
+        let sorted = items
+            .sorted { $0.modifiedAt > $1.modifiedAt }
+            .prefix(maxItemsToConsider)
 
-    /// Returns a small integer bonus per tag to bias suggestions toward recently used tags.
-    /// Higher number = higher chance to appear early.
-    func recencyBonuses() -> [String: Int] {
-        let current = tagLastUsed
-        if current.isEmpty { return [:] }
+        var map: [String: Int] = [:]
 
-        let sorted = current
-            .sorted { $0.value > $1.value }
-            .map { $0.key }
+        for (index, item) in sorted.enumerated() {
+            let bucket = index / bucketSize
+            let bonus = max(minBonusPerOccurrence, maxBonusPerOccurrence - bucket)
 
-        var bonuses: [String: Int] = [:]
-
-        for (idx, tag) in sorted.enumerated() {
-            let bonus: Int
-            if idx < 8 {
-                bonus = 3
-            } else if idx < 20 {
-                bonus = 2
-            } else if idx < 50 {
-                bonus = 1
-            } else {
-                bonus = 0
-            }
-
-            if bonus > 0 {
-                bonuses[tag] = bonus
+            for raw in item.tags {
+                let t = Self.normalizeTag(raw)
+                if t.isEmpty { continue }
+                map[t, default: 0] += bonus
             }
         }
 
-        return bonuses
+        // Optional: Bonus leicht deckeln, damit es nicht explodiert
+        // und damit OCR-Treffer weiterhin zählen.
+        for (k, v) in map {
+            map[k] = min(v, 18)
+        }
+
+        return map
     }
 
     // MARK: - OCR (Chunk 9.1)
