@@ -24,7 +24,8 @@ struct ContentView: View {
     // Filter UI
     @State private var isFilterSheetPresented: Bool = false
 
-    private let defaultImportTag = "inbox"
+    // Settings UI
+    @State private var isSettingsPresented: Bool = false
 
     var body: some View {
         NavigationStack {
@@ -83,6 +84,15 @@ struct ContentView: View {
                 placement: .navigationBarDrawer(displayMode: .always)
             )
             .toolbar {
+
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        isSettingsPresented = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                    }
+                    .accessibilityLabel("Settings")
+                }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     PhotosPicker(
@@ -144,6 +154,10 @@ struct ContentView: View {
             .sheet(isPresented: $isFilterSheetPresented) {
                 filterSheet
             }
+            .sheet(isPresented: $isSettingsPresented) {
+                SettingsView()
+                    .environment(store)
+            }
         }
         .environment(store)
     }
@@ -204,11 +218,13 @@ struct ContentView: View {
                         ImageService.shared.saveImageData(data, preferredFileExtension: ext)
                     else { continue }
 
+                    let importTag = store.defaultImportTag
+
                     if single {
                         await MainActor.run {
                             pendingCapture = PendingCapture(
                                 imageFilename: filename,
-                                initialTags: [defaultImportTag],
+                                initialTags: [importTag],
                                 initialSource: "photo_picker"
                             )
                         }
@@ -216,7 +232,7 @@ struct ContentView: View {
                     } else {
                         let newItem = TrendItem(
                             imageFilename: filename,
-                            tags: [defaultImportTag],
+                            tags: [importTag],
                             source: "photo_picker"
                         )
                         await MainActor.run {

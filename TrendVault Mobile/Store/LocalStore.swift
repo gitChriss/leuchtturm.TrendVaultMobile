@@ -64,9 +64,41 @@ final class LocalStore {
         }
     }
 
-    // MARK: - Allowed Tags (Chunk 9.1)
+    // MARK: - Settings (Chunk 10)
 
     private let settings: UserDefaults
+
+    private let ocrEnabledKey: String = "settings.ocrEnabled"
+    private let defaultImportTagKey: String = "settings.defaultImportTag"
+
+    private static let defaultOCR: Bool = true
+    private static let defaultDefaultImportTag: String = "inbox"
+
+    var isOCREnabled: Bool {
+        didSet {
+            settings.set(isOCREnabled, forKey: ocrEnabledKey)
+        }
+    }
+
+    var defaultImportTag: String {
+        didSet {
+            let normalized = Self.normalizeTag(defaultImportTag)
+            if normalized.isEmpty {
+                defaultImportTag = Self.defaultDefaultImportTag
+                return
+            }
+
+            if normalized != defaultImportTag {
+                defaultImportTag = normalized
+                return
+            }
+
+            settings.set(defaultImportTag, forKey: defaultImportTagKey)
+        }
+    }
+
+    // MARK: - Allowed Tags (Chunk 9.1)
+
     private let allowedTagsKey: String = "allowedTagsText"
 
     private static let defaultAllowedTagsText: String = [
@@ -165,22 +197,16 @@ final class LocalStore {
 
     // MARK: - Recency Bonuses (Chunk 9.2)
 
-    /// Bonus-Map für Tag-Vorschläge. Höhere Werte = höheres Ranking.
-    /// Heuristik:
-    /// - Wir schauen auf die zuletzt geänderten Items (modifiedAt).
-    /// - Tags aus sehr neuen Items bekommen mehr Punkte.
-    /// - Ergebnis ist klein und stabil, kein Persist nötig.
     var recencyBonuses: [String: Int] {
         buildRecencyBonuses()
     }
 
     private func buildRecencyBonuses() -> [String: Int] {
 
-        // Tuning
         let maxItemsToConsider = 30
         let maxBonusPerOccurrence = 6
         let minBonusPerOccurrence = 1
-        let bucketSize = 5  // alle 5 Items sinkt der Bonus
+        let bucketSize = 5
 
         let sorted = items
             .sorted { $0.modifiedAt > $1.modifiedAt }
@@ -199,8 +225,6 @@ final class LocalStore {
             }
         }
 
-        // Optional: Bonus leicht deckeln, damit es nicht explodiert
-        // und damit OCR-Treffer weiterhin zählen.
         for (k, v) in map {
             map[k] = min(v, 18)
         }
@@ -211,6 +235,9 @@ final class LocalStore {
     // MARK: - OCR (Chunk 9.1)
 
     func ensureExtractedTextIfNeeded(for itemID: UUID) async {
+
+        guard isOCREnabled else { return }
+
         guard let item = items.first(where: { $0.id == itemID }) else { return }
         guard let filename = item.imageFilename,
               let dir = SharedContainer.imagesDirectoryURL() else { return }
@@ -244,6 +271,19 @@ final class LocalStore {
         self.isLoading = false
 
         self.settings = UserDefaults(suiteName: SharedContainer.appGroupID) ?? .standard
+
+        let storedOCR = settings.object(forKey: ocrEnabledKey) as? Bool
+        self.isOCREnabled = storedOCR ?? Self.defaultOCR
+        if storedOCR == nil {
+            settings.set(Self.defaultOCR, forKey: ocrEnabledKey)
+        }
+
+        let storedDefaultTag = settings.string(forKey: defaultImportTagKey)
+        let initialDefaultTag = Self.normalizeTag(storedDefaultTag ?? "")
+        self.defaultImportTag = initialDefaultTag.isEmpty ? Self.defaultDefaultImportTag : initialDefaultTag
+        if storedDefaultTag == nil {
+            settings.set(Self.defaultDefaultImportTag, forKey: defaultImportTagKey)
+        }
 
         let stored = settings.string(forKey: allowedTagsKey)
         let initialText = (stored?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
