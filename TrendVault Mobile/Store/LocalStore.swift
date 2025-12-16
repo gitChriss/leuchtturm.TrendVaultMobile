@@ -64,6 +64,98 @@ final class LocalStore {
         }
     }
 
+    // MARK: - Allowed Tags (Chunk 9.1)
+
+    private let settings: UserDefaults
+    private let allowedTagsKey: String = "allowedTagsText"
+
+    private static let defaultAllowedTagsText: String = [
+        "ad",
+        "ads",
+        "hook",
+        "headline",
+        "copy",
+        "cta",
+        "offer",
+        "pricing",
+        "layout",
+        "design",
+        "landingpage",
+        "email",
+        "subject",
+        "testimonial",
+        "ugc",
+        "tiktok",
+        "instagram",
+        "facebook",
+        "linkedin",
+        "youtube",
+        "banner"
+    ].joined(separator: ", ")
+
+    /// User-editable list used ONLY for OCR suggestions.
+    /// Comma and newline separated.
+    var allowedTagsText: String {
+        didSet {
+            persistAllowedTagsText()
+        }
+    }
+
+    var allowedTags: [String] {
+        parseTags(from: allowedTagsText)
+    }
+
+    private func parseTags(from text: String) -> [String] {
+        text
+            .lowercased()
+            .split { ch in
+                ch.isWhitespace || ch == "," || ch == ";" || ch == "\n" || ch == "\t"
+            }
+            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .reduce(into: [String]()) { acc, tag in
+                if !acc.contains(tag) { acc.append(tag) }
+            }
+    }
+
+    private func persistAllowedTagsText() {
+        let trimmed = allowedTagsText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty {
+            settings.set(Self.defaultAllowedTagsText, forKey: allowedTagsKey)
+        } else {
+            settings.set(allowedTagsText, forKey: allowedTagsKey)
+        }
+    }
+
+    // MARK: - OCR (Chunk 9.1)
+
+    /// Ensures `extractedText` exists for a given item.
+    /// - Rules:
+    ///   - Runs only if image exists and extractedText is nil/empty.
+    ///   - Runs off the main thread.
+    ///   - Persists result via store.update.
+    func ensureExtractedTextIfNeeded(for itemID: UUID) async {
+        guard let item = items.first(where: { $0.id == itemID }) else { return }
+        guard let filename = item.imageFilename,
+              let dir = SharedContainer.imagesDirectoryURL() else { return }
+
+        let existing = item.extractedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !existing.isEmpty { return }
+
+        let url = dir.appendingPathComponent(filename)
+
+        let text = await OCRService.shared.recognizeText(fromImageAt: url, itemID: itemID)
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Persist empty string as well to avoid endless retries.
+        let finalText: String = trimmed
+
+        await MainActor.run {
+            guard let latest = self.items.first(where: { $0.id == itemID }) else { return }
+            self.update(latest.updating(extractedText: finalText))
+        }
+    }
+
     // MARK: - Existing Store
 
     private let backend: TrendItemStore
@@ -75,6 +167,20 @@ final class LocalStore {
         self.backend = backend
         self.items = []
         self.isLoading = false
+
+        self.settings = UserDefaults(suiteName: SharedContainer.appGroupID) ?? .standard
+
+        let stored = settings.string(forKey: allowedTagsKey)
+        let initial = (stored?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+            ? stored!
+            : Self.defaultAllowedTagsText
+
+        self.allowedTagsText = initial
+
+        // Ensure default is written at least once.
+        if stored == nil {
+            settings.set(Self.defaultAllowedTagsText, forKey: allowedTagsKey)
+        }
     }
 
     func reload() {

@@ -21,6 +21,11 @@ struct DetailView: View {
     @State private var image: UIImage? = nil
     @State private var lastLoadedFilename: String? = nil
 
+    @State private var suggestedTags: [String] = []
+    @State private var isOcrRunning: Bool = false
+
+    @State private var showingAllowedTagsEditor: Bool = false
+
     private var item: TrendItem? {
         store.items.first { $0.id == itemID }
     }
@@ -37,7 +42,16 @@ struct DetailView: View {
         return dir.appendingPathComponent(filename)
     }
 
+    private var resolvedTags: [String] {
+        tagsText
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
+
     var body: some View {
+        @Bindable var store = store
+
         Group {
             if let item {
                 ScrollView {
@@ -45,7 +59,7 @@ struct DetailView: View {
 
                         imageSection(item: item)
 
-                        formSection(item: item)
+                        formSection(item: item, store: store)
 
                         actionsSection(item: item)
                     }
@@ -56,9 +70,42 @@ struct DetailView: View {
                 .onAppear {
                     tagsText = item.tags.joined(separator: ", ")
                     sourceText = item.source ?? ""
+                    recomputeSuggestions(item: item)
+                }
+                .onChange(of: item.extractedText) { _, _ in
+                    recomputeSuggestions(item: item)
                 }
                 .task(id: imageFilename) {
                     await loadImageIfNeeded()
+                }
+                .task(id: item.extractedText) {
+                    await ensureOcrIfNeeded()
+                }
+                .sheet(isPresented: $showingAllowedTagsEditor) {
+                    NavigationStack {
+                        Form {
+                            Section("Allowed Tags (für OCR Vorschläge)") {
+                                TextEditor(text: $store.allowedTagsText)
+                                    .frame(minHeight: 180)
+
+                                Text("Komma oder Zeilenumbruch")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+
+                            Section("Aktuell") {
+                                Text(store.allowedTags.joined(separator: ", "))
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .navigationTitle("Allowed Tags")
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showingAllowedTagsEditor = false }
+                            }
+                        }
+                    }
                 }
             } else {
                 ContentUnavailableView("Nicht gefunden", systemImage: "questionmark.folder")
@@ -96,7 +143,7 @@ struct DetailView: View {
         }
     }
 
-    private func formSection(item: TrendItem) -> some View {
+    private func formSection(item: TrendItem, store: LocalStore) -> some View {
         VStack(alignment: .leading, spacing: 12) {
 
             VStack(alignment: .leading, spacing: 6) {
@@ -107,6 +154,54 @@ struct DetailView: View {
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.done)
                     .onSubmit { saveTags(for: item) }
+
+                if isOcrRunning {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("OCR läuft")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                } else if !suggestedTags.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("Vorschläge")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            Spacer()
+
+                            Button("Edit") {
+                                showingAllowedTagsEditor = true
+                            }
+                            .font(.caption)
+                        }
+
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(suggestedTags, id: \.self) { tag in
+                                    Button(tag) {
+                                        applySuggestedTag(tag, item: item)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                    }
+                } else {
+                    HStack {
+                        Text("Keine Vorschläge")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Edit") {
+                            showingAllowedTagsEditor = true
+                        }
+                        .font(.caption)
+                    }
+                }
 
                 Text("Kommagetrennt")
                     .font(.caption)
@@ -191,6 +286,61 @@ struct DetailView: View {
         .padding(.top, 4)
     }
 
+    // MARK: - OCR
+
+    private func ensureOcrIfNeeded() async {
+        guard let item else { return }
+
+        let existing = item.extractedText?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !existing.isEmpty {
+            await MainActor.run {
+                isOcrRunning = false
+                recomputeSuggestions(item: item)
+            }
+            return
+        }
+
+        guard item.imageFilename != nil else { return }
+
+        await MainActor.run {
+            isOcrRunning = true
+        }
+
+        await store.ensureExtractedTextIfNeeded(for: itemID)
+
+        await MainActor.run {
+            isOcrRunning = false
+        }
+    }
+
+    private func recomputeSuggestions(item: TrendItem) {
+        let existing = resolvedTags.isEmpty ? item.tags : resolvedTags
+
+        suggestedTags = OCRService.shared.suggestTags(
+            from: item.extractedText,
+            existingTags: existing,
+            allowedTags: store.allowedTags
+        )
+    }
+
+    private func applySuggestedTag(_ tag: String, item: TrendItem) {
+        let normalizedExisting = Set(resolvedTags.map {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        })
+
+        let norm = tag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !norm.isEmpty else { return }
+        guard !normalizedExisting.contains(norm) else { return }
+
+        var updated = resolvedTags
+        updated.append(tag)
+
+        tagsText = updated.joined(separator: ", ")
+        saveTags(for: item)
+
+        recomputeSuggestions(item: item)
+    }
+
     // MARK: - Image loading
 
     private func loadImageIfNeeded() async {
@@ -202,7 +352,6 @@ struct DetailView: View {
             return
         }
 
-        // Do not reload if already loaded for this file.
         if lastLoadedFilename == filename, image != nil {
             return
         }
