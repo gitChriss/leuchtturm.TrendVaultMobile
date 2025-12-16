@@ -93,29 +93,65 @@ final class LocalStore {
         "banner"
     ].joined(separator: ", ")
 
-    /// User-editable list used ONLY for OCR suggestions.
-    /// Comma and newline separated.
     var allowedTagsText: String {
         didSet {
             persistAllowedTagsText()
         }
     }
 
-    var allowedTags: [String] {
-        parseTags(from: allowedTagsText)
+    var allowedTagsList: [String] {
+        didSet {
+            syncAllowedTagsTextFromList()
+        }
     }
 
-    private func parseTags(from text: String) -> [String] {
-        text
+    var allowedTags: [String] {
+        allowedTagsList
+            .map { Self.normalizeTag($0) }
+            .filter { !$0.isEmpty }
+    }
+
+    private static func normalizeTag(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private static func parseTags(from text: String) -> [String] {
+        var result: [String] = []
+
+        let parts = text
             .lowercased()
             .split { ch in
                 ch.isWhitespace || ch == "," || ch == ";" || ch == "\n" || ch == "\t"
             }
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .reduce(into: [String]()) { acc, tag in
-                if !acc.contains(tag) { acc.append(tag) }
-            }
+            .map { String($0) }
+
+        for raw in parts {
+            let t = normalizeTag(raw)
+            if t.isEmpty { continue }
+            if result.contains(t) { continue }
+            result.append(t)
+        }
+
+        return result
+    }
+
+    private func syncAllowedTagsTextFromList() {
+        var cleaned: [String] = []
+        for raw in allowedTagsList {
+            let t = Self.normalizeTag(raw)
+            if t.isEmpty { continue }
+            if cleaned.contains(t) { continue }
+            cleaned.append(t)
+        }
+
+        if cleaned != allowedTagsList {
+            allowedTagsList = cleaned
+            return
+        }
+
+        allowedTagsText = cleaned.joined(separator: ", ")
     }
 
     private func persistAllowedTagsText() {
@@ -127,13 +163,72 @@ final class LocalStore {
         }
     }
 
+    // MARK: - Tag Recency (Chunk 9.1 polish)
+
+    private let tagLastUsedKey: String = "tagLastUsed"
+
+    /// Returns normalized tag -> last used timestamp (unix time).
+    private var tagLastUsed: [String: TimeInterval] {
+        get {
+            guard let data = settings.data(forKey: tagLastUsedKey) else { return [:] }
+            guard let dict = try? JSONDecoder().decode([String: TimeInterval].self, from: data) else { return [:] }
+            return dict
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                settings.set(data, forKey: tagLastUsedKey)
+            }
+        }
+    }
+
+    /// Call this whenever tags are saved / applied.
+    func markTagsUsed(_ tags: [String]) {
+        let now = Date().timeIntervalSince1970
+        var current = tagLastUsed
+
+        for raw in tags {
+            let t = Self.normalizeTag(raw)
+            if t.isEmpty { continue }
+            current[t] = now
+        }
+
+        tagLastUsed = current
+    }
+
+    /// Returns a small integer bonus per tag to bias suggestions toward recently used tags.
+    /// Higher number = higher chance to appear early.
+    func recencyBonuses() -> [String: Int] {
+        let current = tagLastUsed
+        if current.isEmpty { return [:] }
+
+        let sorted = current
+            .sorted { $0.value > $1.value }
+            .map { $0.key }
+
+        var bonuses: [String: Int] = [:]
+
+        for (idx, tag) in sorted.enumerated() {
+            let bonus: Int
+            if idx < 8 {
+                bonus = 3
+            } else if idx < 20 {
+                bonus = 2
+            } else if idx < 50 {
+                bonus = 1
+            } else {
+                bonus = 0
+            }
+
+            if bonus > 0 {
+                bonuses[tag] = bonus
+            }
+        }
+
+        return bonuses
+    }
+
     // MARK: - OCR (Chunk 9.1)
 
-    /// Ensures `extractedText` exists for a given item.
-    /// - Rules:
-    ///   - Runs only if image exists and extractedText is nil/empty.
-    ///   - Runs off the main thread.
-    ///   - Persists result via store.update.
     func ensureExtractedTextIfNeeded(for itemID: UUID) async {
         guard let item = items.first(where: { $0.id == itemID }) else { return }
         guard let filename = item.imageFilename,
@@ -147,7 +242,6 @@ final class LocalStore {
         let text = await OCRService.shared.recognizeText(fromImageAt: url, itemID: itemID)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
 
-        // Persist empty string as well to avoid endless retries.
         let finalText: String = trimmed
 
         await MainActor.run {
@@ -171,13 +265,13 @@ final class LocalStore {
         self.settings = UserDefaults(suiteName: SharedContainer.appGroupID) ?? .standard
 
         let stored = settings.string(forKey: allowedTagsKey)
-        let initial = (stored?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
+        let initialText = (stored?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false)
             ? stored!
             : Self.defaultAllowedTagsText
 
-        self.allowedTagsText = initial
+        self.allowedTagsText = initialText
+        self.allowedTagsList = Self.parseTags(from: initialText)
 
-        // Ensure default is written at least once.
         if stored == nil {
             settings.set(Self.defaultAllowedTagsText, forKey: allowedTagsKey)
         }

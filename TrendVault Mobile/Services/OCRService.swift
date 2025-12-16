@@ -16,8 +16,6 @@ final class OCRService {
 
     private let pipeline = OCRPipeline()
 
-    /// Public entry point with throttling + de-duplication.
-    /// - Important: This never blocks UI and will run at most one OCR job at a time.
     func recognizeText(fromImageAt url: URL, itemID: UUID) async -> String {
         await pipeline.run(itemID: itemID, url: url) { url in
             await self.performOCR(url: url)
@@ -61,7 +59,14 @@ final class OCRService {
     ///   - Returns suggestions only, never auto-applies.
     ///   - Excludes existingTags.
     ///   - Only returns tags that exist in allowedTags (whitelist for OCR suggestions).
-    func suggestTags(from extractedText: String?, existingTags: [String], allowedTags: [String]) -> [String] {
+    ///   - Applies small recency bonuses to prefer recently used tags.
+    func suggestTags(
+        from extractedText: String?,
+        existingTags: [String],
+        allowedTags: [String],
+        recencyBonuses: [String: Int]
+    ) -> [String] {
+
         guard let extractedText, !extractedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return []
         }
@@ -91,8 +96,6 @@ final class OCRService {
             let cleaned = token.trimmingCharacters(in: .whitespacesAndNewlines)
             if cleaned.count < 2 { continue }
             if cleaned.allSatisfy({ $0.isNumber }) { continue }
-
-            // keep URLs out
             if cleaned.contains("http") || cleaned.contains("www") { continue }
 
             let normalized = normalizeTag(cleaned)
@@ -102,6 +105,19 @@ final class OCRService {
             if !allowedSet.contains(normalized) { continue }
 
             counts[normalized, default: 0] += 1
+        }
+
+        // Apply recency bonuses (small nudge).
+        if !recencyBonuses.isEmpty {
+            for (tag, bonus) in recencyBonuses {
+                let normalized = normalizeTag(tag)
+                guard !normalized.isEmpty else { continue }
+                guard allowedSet.contains(normalized) else { continue }
+                guard !normalizedExisting.contains(normalized) else { continue }
+                guard bonus > 0 else { continue }
+
+                counts[normalized, default: 0] += bonus
+            }
         }
 
         let ranked = counts
